@@ -6,6 +6,7 @@ import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.widget.GridLayoutManager;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.StaggeredGridLayoutManager;
 import android.support.v7.widget.helper.ItemTouchHelper;
 import android.util.AttributeSet;
 import android.view.View;
@@ -32,9 +33,10 @@ public class RealmRecyclerView extends FrameLayout {
         void onLoadMore(Object lastItem);
     }
 
-    private enum Type {
+    public enum Type {
         LinearLayout,
         Grid,
+        StaggeredGrid,
         LinearLayoutWithHeaders
     }
 
@@ -52,9 +54,11 @@ public class RealmRecyclerView extends FrameLayout {
     private Type type;
     private int gridSpanCount;
     private int gridWidthPx;
+    private int gridOrientation;
     private boolean swipeToDelete;
 
     private GridLayoutManager gridManager;
+    private StaggeredGridLayoutManager staggeredGridManager;
     private int lastMeasuredWidth = -1;
 
     // State
@@ -103,43 +107,13 @@ public class RealmRecyclerView extends FrameLayout {
         }
 
         if (emptyViewId != 0) {
-            emptyContentContainer.setLayoutResource(emptyViewId);
-            emptyContentContainer.inflate();
+            setEmptyView(emptyViewId);
         }
 
-        if (type == null) {
-            throw new IllegalStateException("A type has to be specified via XML attribute");
+        if (type != null) {
+            setType(type);
         }
-        switch (type) {
-            case LinearLayout:
-                recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
-                break;
 
-            case Grid:
-                throwIfSwipeToDeleteEnabled();
-                if (gridSpanCount == -1 && gridWidthPx == -1) {
-                    throw new IllegalStateException(
-                            "For GridLayout, a span count or item width has to be set");
-                } else if(gridSpanCount != -1 && gridWidthPx != -1) {
-                    // This is awkward. Both values are set. Instead of picking one, throw an error.
-                    throw new IllegalStateException(
-                            "For GridLayout, a span count and item width can not both be set");
-                }
-                // Uses either the provided gridSpanCount or 1 as a placeholder what will be
-                // calculated based on gridWidthPx in onMeasure.
-                int spanCount = gridSpanCount == -1 ? 1 : gridSpanCount;
-                gridManager = new GridLayoutManager(getContext(), spanCount);
-                recyclerView.setLayoutManager(gridManager);
-                break;
-
-            case LinearLayoutWithHeaders:
-                throwIfSwipeToDeleteEnabled();
-                recyclerView.setLayoutManager(new LayoutManager(getContext()));
-                break;
-
-            default:
-                throw new IllegalStateException("The type attribute has to be set.");
-        }
         recyclerView.setHasFixedSize(true);
 
         recyclerView.addOnScrollListener(
@@ -172,6 +146,72 @@ public class RealmRecyclerView extends FrameLayout {
         }
     }
 
+    public void setEmptyView(int emptyView) {
+        emptyViewId = emptyView;
+        emptyContentContainer.setLayoutResource(emptyView);
+        emptyContentContainer.inflate();
+    }
+
+    public void setSpanCount(int spanCount) {
+        gridSpanCount = spanCount;
+    }
+
+    public void setGridOrientation(int orientation) {
+        gridOrientation = orientation;
+    }
+
+    public void setType(Type type) {
+        switch (type) {
+            case LinearLayout:
+                recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
+                break;
+
+            case Grid:
+                throwIfSwipeToDeleteEnabled();
+                if (gridSpanCount == -1 && gridWidthPx == -1) {
+                    throw new IllegalStateException(
+                        "For GridLayout, a span count or item width has to be set");
+                } else if(gridSpanCount != -1 && gridWidthPx != -1) {
+                    // This is awkward. Both values are set. Instead of picking one, throw an error.
+                    throw new IllegalStateException(
+                        "For GridLayout, a span count and item width can not both be set");
+                }
+                // Uses either the provided gridSpanCount or 1 as a placeholder what will be
+                // calculated based on gridWidthPx in onMeasure.
+                int spanCount = gridSpanCount == -1 ? 1 : gridSpanCount;
+                int orientation = gridOrientation == -1 ? LinearLayoutManager.VERTICAL : gridOrientation;
+                gridManager = new GridLayoutManager(getContext(), spanCount, orientation, false);
+                recyclerView.setLayoutManager(gridManager);
+                break;
+
+            case StaggeredGrid:
+                throwIfSwipeToDeleteEnabled();
+                if (gridSpanCount == -1 && gridWidthPx == -1) {
+                    throw new IllegalStateException(
+                        "For GridLayout, a span count or item width has to be set");
+                } else if(gridSpanCount != -1 && gridWidthPx != -1) {
+                    // This is awkward. Both values are set. Instead of picking one, throw an error.
+                    throw new IllegalStateException(
+                        "For GridLayout, a span count and item width can not both be set");
+                }
+                // Uses either the provided gridSpanCount or 1 as a placeholder what will be
+                // calculated based on gridWidthPx in onMeasure.
+                int staggeredSpanCount = gridSpanCount == -1 ? 1 : gridSpanCount;
+                int staggeredOrientation = gridOrientation == -1 ? LinearLayoutManager.VERTICAL : gridOrientation;
+                staggeredGridManager = new StaggeredGridLayoutManager(staggeredSpanCount, staggeredOrientation);
+                recyclerView.setLayoutManager(staggeredGridManager);
+                break;
+
+            case LinearLayoutWithHeaders:
+                throwIfSwipeToDeleteEnabled();
+                recyclerView.setLayoutManager(new LayoutManager(getContext()));
+                break;
+
+            default:
+                throw new IllegalStateException("The type attribute has to be set.");
+        }
+    }
+
     private void throwIfSwipeToDeleteEnabled() {
         if (!swipeToDelete) {
             return;
@@ -187,6 +227,10 @@ public class RealmRecyclerView extends FrameLayout {
     public void enableShowLoadMore() {
         showShowLoadMore = true;
         ((RealmBasedRecyclerViewAdapter) recyclerView.getAdapter()).addLoadMore();
+    }
+
+    public void finishedLoadingMore() {
+        hasLoadMoreFired = false;
     }
 
     public void disableShowLoadMore() {
@@ -227,6 +271,9 @@ public class RealmRecyclerView extends FrameLayout {
             case Grid:
                 return ((GridLayoutManager) recyclerView.getLayoutManager())
                         .findFirstVisibleItemPosition();
+            case StaggeredGrid:
+                return ((StaggeredGridLayoutManager) recyclerView.getLayoutManager())
+                        .findFirstVisibleItemPositions(null)[0];
             case LinearLayoutWithHeaders:
                 return ((LayoutManager) recyclerView.getLayoutManager())
                         .findFirstVisibleItemPosition();
@@ -251,6 +298,7 @@ public class RealmRecyclerView extends FrameLayout {
         gridSpanCount = typedArray.getInt(R.styleable.RealmRecyclerView_rrvGridLayoutSpanCount, -1);
         gridWidthPx = typedArray
                 .getDimensionPixelSize(R.styleable.RealmRecyclerView_rrvGridLayoutItemWidth, -1);
+        gridOrientation = typedArray.getInt(R.styleable.RealmRecyclerView_rrvGridLayoutOrientation, -1);
         swipeToDelete =
                 typedArray.getBoolean(R.styleable.RealmRecyclerView_rrvSwipeToDelete, false);
         typedArray.recycle();
