@@ -33,6 +33,10 @@ public class RealmRecyclerView extends FrameLayout {
         void onLoadMore(Object lastItem);
     }
 
+    public interface OnEmptyAdapterListener {
+        void onEmptyAdapter();
+    }
+
     public enum Type {
         LinearLayout,
         Grid,
@@ -55,6 +59,7 @@ public class RealmRecyclerView extends FrameLayout {
     private int gridSpanCount;
     private int gridWidthPx;
     private int gridOrientation;
+    private RecyclerView.ItemDecoration itemDecoration;
     private boolean swipeToDelete;
 
     private GridLayoutManager gridManager;
@@ -67,6 +72,7 @@ public class RealmRecyclerView extends FrameLayout {
     // Listener
     private OnRefreshListener onRefreshListener;
     private OnLoadMoreListener onLoadMoreListener;
+    private OnEmptyAdapterListener onEmptyAdapterListener;
 
     public RealmRecyclerView(Context context) {
         super(context);
@@ -160,6 +166,10 @@ public class RealmRecyclerView extends FrameLayout {
         gridOrientation = orientation;
     }
 
+    public void setItemDecoration(RecyclerView.ItemDecoration itemDecoration) {
+        this.itemDecoration = itemDecoration;
+    }
+
     public void setType(Type type) {
         switch (type) {
             case LinearLayout:
@@ -175,6 +185,10 @@ public class RealmRecyclerView extends FrameLayout {
                     // This is awkward. Both values are set. Instead of picking one, throw an error.
                     throw new IllegalStateException(
                         "For GridLayout, a span count and item width can not both be set");
+                }
+                // Add item decorator
+                if (itemDecoration != null) {
+                    recyclerView.addItemDecoration(itemDecoration);
                 }
                 // Uses either the provided gridSpanCount or 1 as a placeholder what will be
                 // calculated based on gridWidthPx in onMeasure.
@@ -199,6 +213,7 @@ public class RealmRecyclerView extends FrameLayout {
                 int staggeredSpanCount = gridSpanCount == -1 ? 1 : gridSpanCount;
                 int staggeredOrientation = gridOrientation == -1 ? LinearLayoutManager.VERTICAL : gridOrientation;
                 staggeredGridManager = new StaggeredGridLayoutManager(staggeredSpanCount, staggeredOrientation);
+                staggeredGridManager.setGapStrategy( StaggeredGridLayoutManager.GAP_HANDLING_MOVE_ITEMS_BETWEEN_SPANS);
                 recyclerView.setLayoutManager(staggeredGridManager);
                 break;
 
@@ -210,6 +225,10 @@ public class RealmRecyclerView extends FrameLayout {
             default:
                 throw new IllegalStateException("The type attribute has to be set.");
         }
+    }
+
+    protected RecyclerView.ItemDecoration getItemDecorator() {
+        return null;
     }
 
     private void throwIfSwipeToDeleteEnabled() {
@@ -360,8 +379,11 @@ public class RealmRecyclerView extends FrameLayout {
         if (emptyViewId == 0) {
             return;
         }
-        emptyContentContainer.setVisibility(
-                adapter.getItemCount() == 0 ? View.VISIBLE : View.GONE);
+        boolean empty = adapter.getItemCount() == 0;
+        emptyContentContainer.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (onEmptyAdapterListener != null) {
+            onEmptyAdapterListener.onEmptyAdapter();
+        }
     }
 
     //
@@ -403,4 +425,13 @@ public class RealmRecyclerView extends FrameLayout {
                     isRefreshing = true;
                 }
             };
+
+
+    //
+    // Empty adapter
+    //
+
+    public void setOnEmptyAdapterListener(OnEmptyAdapterListener onEmptyAdapterListener) {
+        this.onEmptyAdapterListener = onEmptyAdapterListener;
+    }
 }
